@@ -1,4 +1,6 @@
 mod session;
+mod command;
+mod response;
 use std::{net::{TcpListener}, thread};
 
 use session::Session; 
@@ -10,12 +12,14 @@ fn main() {
             Ok(stream) => {
                 thread::spawn(move || {
                     let client_addr = stream.peer_addr();
-                    let mut session = Session {
-                        cmd_stream: stream,
-                        mode: None,
-                    };
-                    if let Err(e) = session.run() {
-                        println!("Error in session with {:#?}: {}", client_addr, e);
+                    if let Ok(mut session) = Session::new(stream) {
+                        if let Err(e) = session.run() {
+                            println!("Error in session with {}: {}", 
+                                client_addr.map_or("unknown".to_string(), |v| v.to_string()), 
+                                e);
+                        }
+                    } else {
+                        println!("Error creating session");
                     }
                 });
             },
