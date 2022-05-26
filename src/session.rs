@@ -1,7 +1,14 @@
-use std::{net::TcpStream, io::{BufReader, BufWriter, BufRead, Write}};
-use anyhow::{Result, anyhow, Ok};
+use anyhow::{anyhow, Ok, Result};
+use std::{
+    fmt::Display,
+    io::{BufRead, BufReader, BufWriter, Write},
+    net::TcpStream,
+};
 
-use crate::{command::Command, response, response::ResponseMessage};
+use crate::{
+    command::Command,
+    response::{self},
+};
 
 /// Session with a client
 pub struct Session {
@@ -13,9 +20,12 @@ impl Session {
     pub fn new(cmd_stream: TcpStream) -> Result<Self> {
         let cmd_reader = BufReader::new(cmd_stream.try_clone()?);
         let cmd_writer = BufWriter::new(cmd_stream.try_clone()?);
-        Ok(Session { cmd_reader, cmd_writer })
+        Ok(Session {
+            cmd_reader,
+            cmd_writer,
+        })
     }
-    
+
     /// receive one line message and parse it to command
     /// returns err when failed to get message, thus the conn should be closed
     /// returns ok but the inner value may be none if parse failed
@@ -34,25 +44,19 @@ impl Session {
         Ok(buf)
     }
 
-    /// send one response to client
-    fn send_resp<T>(&mut self, resp: T) -> Result<()>
-        where 
-            T: ResponseMessage {
-        let code = resp.code();
-        let message = resp.message();
-        self.send_msg(&format!("{code:} {message:}\r\n"))
-    }
-
     /// send one line message to client
-    fn send_msg(&mut self, msg: &str) -> Result<()> {
-        self.cmd_writer.write_all(msg.as_bytes())?;
+    fn send_msg<T>(&mut self, msg: T) -> Result<()>
+    where
+        T: Display,
+    {
+        self.cmd_writer.write_all(msg.to_string().as_bytes())?;
         self.cmd_writer.flush()?;
         Ok(())
     }
 
-    /// handle client with a infinite loop, read client's command and exec it 
+    /// handle client with a infinite loop, read client's command and exec it
     pub fn run(&mut self) -> Result<()> {
-        self.send_resp(response::Greeting220)?;
+        self.send_msg(response::Greeting220)?;
 
         loop {
             let cmd = self.get_cmd()?;
@@ -60,7 +64,7 @@ impl Session {
                 self.handle_cmd(cmd)?;
             } else {
                 // parse failed
-                self.send_resp(response::SyntaxErr500)?;
+                self.send_msg(response::SyntaxErr500)?;
             }
         }
     }
@@ -69,7 +73,7 @@ impl Session {
     fn handle_cmd(&mut self, cmd: Command) -> Result<()> {
         use crate::command::CommandT::*;
         match cmd.cmd_type {
-            QUIT => self.handle_quit(cmd.args)?,
+            Quit => self.handle_quit(cmd.args)?,
         }
         Ok(())
     }
