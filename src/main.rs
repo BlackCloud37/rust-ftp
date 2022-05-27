@@ -1,13 +1,13 @@
 mod command;
 mod response;
 mod session;
-use std::{
-    net::{TcpListener, ToSocketAddrs},
+use std::{net::{TcpListener, TcpStream, ToSocketAddrs},
     thread,
 };
 
+use anyhow::Result;
 use env_logger::Env;
-use log::{error, info};
+use log::{debug, error, info};
 use session::Session;
 
 fn main() {
@@ -18,34 +18,50 @@ fn main() {
     serve(addr);
 }
 
-fn serve<A>(addr: A)
-where
-    A: ToSocketAddrs,
-{
+fn serve<A: ToSocketAddrs>(addr: A) {
     let listener = TcpListener::bind(addr).unwrap();
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let client_addr = stream
-                    .peer_addr()
-                    .map_or("unknown".to_string(), |v| v.to_string());
-
-                thread::spawn(move || {
-                    if let Ok(mut session) = Session::new(stream) {
-                        info!("Session with {client_addr:} starts");
-                        if let Err(e) = session.run() {
-                            info!("Session with {client_addr:} closed: {e:}");
-                        }
-                    } else {
-                        error!("Error creating session with {client_addr:}");
-                    }
-                });
+                serve_one_client(stream);
             }
             Err(e) => {
                 error!("failed accepting client's connection: {e:}");
             }
         }
     }
+}
+
+/// handle client with a infinite loop, read client's command and exec it
+fn serve_one_client(stream: TcpStream) {
+    let client_addr = stream
+        .peer_addr()
+        .map_or("unknown".to_string(), |v| v.to_string());
+
+    thread::spawn(move || {
+        if let Ok(mut session) = Session::new(stream) {
+            let mut run = || -> Result<()> {
+                info!("Session with {client_addr:} starts");
+                session.send_msg(response::Greeting220::default())?;
+
+                loop {
+                    let cmd = session.get_cmd()?;
+                    debug!("Parse result: {cmd:?}");
+                    if let Some(cmd) = cmd {
+                        session.exec_cmd(cmd)?;
+                    } else {
+                        // parse failed
+                        session.send_msg(response::SyntaxErr500::default())?;
+                    }
+                }
+            };
+            if let Err(e) = run() {
+                info!("Session with {client_addr:} closed: {e:}");
+            }
+        } else {
+            error!("Error creating session with {client_addr:}");
+        }
+    });
 }
 
 #[cfg(test)]
