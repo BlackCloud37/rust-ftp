@@ -6,10 +6,16 @@ use std::{
     thread,
 };
 
+use env_logger::Env;
+use log::{error, info};
 use session::Session;
 
 fn main() {
-    serve("0.0.0.0:8080");
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+
+    let addr = "0.0.0.0:8080";
+    info!("Starting server at {addr:}");
+    serve(addr);
 }
 
 fn serve<A>(addr: A)
@@ -20,22 +26,23 @@ where
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let client_addr = stream
+                    .peer_addr()
+                    .map_or("unknown".to_string(), |v| v.to_string());
+
                 thread::spawn(move || {
-                    let client_addr = stream
-                        .peer_addr()
-                        .map_or("unknown".to_string(), |v| v.to_string());
                     if let Ok(mut session) = Session::new(stream) {
-                        println!("Session with {} starts", client_addr);
+                        info!("Session with {client_addr:} starts");
                         if let Err(e) = session.run() {
-                            println!("Error in session with {}: {}", client_addr, e);
+                            info!("Session with {client_addr:} closed: {e:}");
                         }
                     } else {
-                        println!("Error creating session");
+                        error!("Error creating session with {client_addr:}");
                     }
                 });
             }
             Err(e) => {
-                println!("Error: {}", e);
+                error!("failed accepting client's connection: {e:}");
             }
         }
     }
@@ -51,6 +58,7 @@ mod tests {
     };
 
     use anyhow::{anyhow, Result};
+    use log::info;
 
     use crate::{response::*, serve};
 
@@ -79,21 +87,26 @@ mod tests {
         }
     }
 
+    fn init_logger() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
     fn setup_server() {
         let _server = thread::spawn(move || {
             serve("0.0.0.0:8080");
         });
         // wait server to start
         sleep(Duration::from_secs(1));
-        println!("server is up");
+        info!("server is up");
     }
 
     /// returns reader/writer of control conn
     fn setup_client() -> TestClient {
+        init_logger();
         let client = TcpStream::connect("127.0.0.1:8080").unwrap();
         let cmd_reader = BufReader::new(client.try_clone().unwrap());
         let cmd_writer = BufWriter::new(client.try_clone().unwrap());
-        println!("client is up");
+        info!("client is up");
         TestClient {
             cmd_reader,
             cmd_writer,

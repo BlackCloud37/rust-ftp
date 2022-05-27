@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Ok, Result};
+use log::debug;
 use std::{
     fmt::Display,
     io::{BufRead, BufReader, BufWriter, Write},
@@ -31,7 +32,9 @@ impl Session {
     /// returns ok but the inner value may be none if parse failed
     fn get_cmd(&mut self) -> Result<Option<Command>> {
         let line = self.get_msg()?;
-        Ok(Command::parse(&line))
+        let line = line.trim();
+        debug!("Recv message: {line:}");
+        Ok(Command::parse(line))
     }
 
     /// receive one line message from client
@@ -49,7 +52,9 @@ impl Session {
     where
         T: Display,
     {
-        self.cmd_writer.write_all(msg.to_string().as_bytes())?;
+        let msg = msg.to_string();
+        debug!("Send message: {}", msg.trim());
+        self.cmd_writer.write_all(msg.as_bytes())?;
         self.cmd_writer.flush()?;
         Ok(())
     }
@@ -60,6 +65,7 @@ impl Session {
 
         loop {
             let cmd = self.get_cmd()?;
+            debug!("Parse result: {cmd:?}");
             if let Some(cmd) = cmd {
                 self.handle_cmd(cmd)?;
             } else {
