@@ -61,7 +61,7 @@ impl Session {
 
     /// handle client with a infinite loop, read client's command and exec it
     pub fn run(&mut self) -> Result<()> {
-        self.send_msg(response::Greeting220)?;
+        self.send_msg(response::Greeting220::default())?;
 
         loop {
             let cmd = self.get_cmd()?;
@@ -70,7 +70,7 @@ impl Session {
                 self.handle_cmd(cmd)?;
             } else {
                 // parse failed
-                self.send_msg(response::SyntaxErr500)?;
+                self.send_msg(response::SyntaxErr500::default())?;
             }
         }
     }

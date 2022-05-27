@@ -23,24 +23,84 @@ macro_rules! impl_display {
     };
 }
 
-impl_display!(Greeting220, SyntaxErr500);
+macro_rules! response {
+    ($structname: ident, $code: literal) => {
+        pub struct $structname(String);
+        impl_display!($structname);
+        impl ResponseMessage for $structname {
+            fn code(&self) -> u16 {
+                $code
+            }
+            fn message(&self) -> &str {
+                &self.0
+            }
+        }
 
-pub struct Greeting220;
-impl ResponseMessage for Greeting220 {
-    fn code(&self) -> u16 {
-        220
-    }
-    fn message(&self) -> &str {
-        "Welcome to the rust FTP Server"
-    }
+        impl $structname {
+            /// Create response with custom body
+            #[allow(dead_code)]
+            pub fn new<S: AsRef<str>>(s: S) -> Self {
+                Self(s.as_ref().to_string())
+            }
+        }
+    };
+    ($structname: ident, $code: literal, $default_message: literal) => {
+        pub struct $structname(Option<String>);
+        impl_display!($structname);
+        impl ResponseMessage for $structname {
+            fn code(&self) -> u16 {
+                $code
+            }
+            fn message(&self) -> &str {
+                if let Some(s) = &self.0 {
+                    return s;
+                }
+                $default_message
+            }
+        }
+
+        impl $structname {
+            /// Create response with custom body
+            #[allow(dead_code)]
+            pub fn new<S: AsRef<str>>(s: S) -> Self {
+                Self(Some(s.as_ref().to_string()))
+            }
+        }
+
+        impl Default for $structname {
+            fn default() -> Self {
+                Self(None)
+            }
+        }
+    };
 }
 
-pub struct SyntaxErr500;
-impl ResponseMessage for SyntaxErr500 {
-    fn code(&self) -> u16 {
-        500
+response!(Greeting220, 220, "Welcome to the rust FTP Server");
+response!(SyntaxErr500, 500, "Command not executed: syntax error");
+response!(UnknownRespWithoutDefaultMessage999, 999);
+
+#[cfg(test)]
+mod response_test {
+    use super::*;
+
+    fn assert_response_equal_str<T: ResponseMessage>(resp: T, s: &str) {
+        assert_eq!(resp.to_string(), format!("{s:}\r\n"));
     }
-    fn message(&self) -> &str {
-        "Command not executed: syntax error"
+
+    #[test]
+    fn test_resp_default_message() {
+        assert_response_equal_str(Greeting220::default(), "220 Welcome to the rust FTP Server");
+        assert_response_equal_str(
+            SyntaxErr500::default(),
+            "500 Command not executed: syntax error",
+        );
+    }
+
+    #[test]
+    fn test_resp_custom_message() {
+        assert_response_equal_str(
+            UnknownRespWithoutDefaultMessage999::new("unknown"),
+            "999 unknown",
+        );
     }
 }

@@ -49,10 +49,11 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_test {
     use std::{
         io::{BufRead, BufReader, BufWriter, Write},
         net::TcpStream,
+        sync::Once,
         thread::{self, sleep},
         time::Duration,
     };
@@ -62,7 +63,7 @@ mod tests {
 
     use crate::{response::*, serve};
 
-    struct TestClient {
+    pub struct TestClient {
         cmd_reader: BufReader<TcpStream>,
         cmd_writer: BufWriter<TcpStream>,
     }
@@ -87,37 +88,69 @@ mod tests {
         }
     }
 
-    fn init_logger() {
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
+    mod setup {
+        use super::*;
 
-    fn setup_server() {
-        let _server = thread::spawn(move || {
-            serve("0.0.0.0:8080");
-        });
-        // wait server to start
-        sleep(Duration::from_secs(1));
-        info!("server is up");
-    }
+        static INIT: Once = Once::new();
+        pub fn setup_once() {
+            INIT.call_once(|| {
+                init_logger();
+                setup_server();
+            })
+        }
 
-    /// returns reader/writer of control conn
-    fn setup_client() -> TestClient {
-        init_logger();
-        let client = TcpStream::connect("127.0.0.1:8080").unwrap();
-        let cmd_reader = BufReader::new(client.try_clone().unwrap());
-        let cmd_writer = BufWriter::new(client.try_clone().unwrap());
-        info!("client is up");
-        TestClient {
-            cmd_reader,
-            cmd_writer,
+        fn init_logger() {
+            let _ = env_logger::builder().is_test(true).try_init();
+        }
+
+        fn setup_server() {
+            let _server = thread::spawn(move || {
+                serve("0.0.0.0:8080");
+            });
+            // wait server to start
+            sleep(Duration::from_micros(100));
+            info!("server is up");
+        }
+
+        /// returns reader/writer of control conn
+        pub fn setup_client() -> TestClient {
+            let client = TcpStream::connect("127.0.0.1:8080").unwrap();
+            let cmd_reader = BufReader::new(client.try_clone().unwrap());
+            let cmd_writer = BufWriter::new(client.try_clone().unwrap());
+            info!("client is up");
+            TestClient {
+                cmd_reader,
+                cmd_writer,
+            }
         }
     }
 
+    mod utils {
+        pub fn assert_string_trim_eq<S: AsRef<str>>(lhs: S, rhs: S) {
+            assert_eq!(lhs.as_ref().trim(), rhs.as_ref().trim());
+        }
+    }
+
+    use setup::*;
+    use utils::*;
+
     #[test]
-    fn client_server() {
-        setup_server();
+    fn test_hello() {
+        setup_once();
         let mut client = setup_client();
-        assert_eq!(client.get_msg().unwrap(), Greeting220.to_string().trim()); // get hello
+
+        assert_string_trim_eq(
+            client.get_msg().unwrap(),
+            Greeting220::default().to_string(),
+        );
+    }
+
+    #[test]
+    fn test_quit() {
+        setup_once();
+        let mut client = setup_client();
+
+        client.get_msg().unwrap(); // ignore hello
         client.send_msg("QUIT").unwrap(); // quit
         assert!(client.get_msg().is_err()); // conn should close
     }

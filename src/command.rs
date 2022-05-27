@@ -33,7 +33,7 @@ impl Command {
 }
 
 #[cfg(test)]
-mod tests {
+mod command_test {
     use super::*;
 
     #[test]
