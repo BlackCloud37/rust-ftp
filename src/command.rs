@@ -29,9 +29,10 @@ macro_rules! commands {
                 let parse_result = Command::from_str(tokens[0]);
                 match parse_result {
                     Ok(command) => {
+                        println!("{command:?}");
                         let args = tokens[1..].iter().map(|s| s.to_string()).collect();
                         match command {
-                            $($cmd => Some(Self::$cmd(args)),)*
+                            $(Command::$cmd(_) => Some(Self::$cmd(args)),)*
                         }
                     },
                     _ => None
@@ -48,7 +49,7 @@ macro_rules! commands {
     };
 }
 
-commands!(Quit);
+commands!(Quit, User, Pass);
 
 #[cfg(test)]
 mod command_test {
@@ -70,6 +71,18 @@ mod command_test {
         for (i, ch) in ["a", "b", "c", "1", "2", "3"].iter().enumerate() {
             assert_eq!(quit_with_arguments.get_args()[i], *ch);
         }
+    }
+
+    #[test]
+    fn test_parse_type() {
+        let quit = Command::parse("QUIT\r\n").unwrap();
+        assert!(matches!(quit, Command::Quit(_))); 
+
+        let user = Command::parse("USER username\r\n").unwrap();
+        assert!(matches!(user, Command::User(_))); 
+
+        let pass = Command::parse("PASS password\r\n").unwrap();
+        assert!(matches!(pass, Command::Pass(_))); 
     }
 
     #[test]

@@ -96,6 +96,11 @@ pub mod integration_test {
             Ok(line.trim().to_string())
         }
 
+        pub fn get_msg_code(&mut self) -> Result<u16> {
+            let msg = self.get_msg_trimed()?;
+            Ok(msg.split_ascii_whitespace().next().unwrap().parse().unwrap())
+        }
+
         /// send one line message to server(with appended \r\n)
         pub fn send_msg_add_crlf(&mut self, msg: &str) -> Result<()> {
             self.cmd_writer
@@ -169,5 +174,34 @@ pub mod integration_test {
         client.get_msg_trimed().unwrap(); // ignore hello
         client.send_msg_add_crlf("QUIT").unwrap(); // quit
         assert!(client.get_msg_trimed().is_err()); // conn should close
+    }
+
+    #[test]
+    fn test_login_success() {
+        let mut client = setup_client();
+
+        client.get_msg_trimed().unwrap();
+
+        client.send_msg_add_crlf("USER anonymous").unwrap();
+        assert_eq!(client.get_msg_code().unwrap(), 331);
+
+        client.send_msg_add_crlf("PASS anonymous").unwrap();
+        assert_eq!(client.get_msg_code().unwrap(), 230);
+    }
+
+    #[test]
+    fn test_login_fail() {
+        let mut client = setup_client();
+
+        client.get_msg_trimed().unwrap();
+
+        client.send_msg_add_crlf("USER anonymous").unwrap();
+        assert_eq!(client.get_msg_code().unwrap(), 331);
+
+        client.send_msg_add_crlf("PASS wrong").unwrap();
+        assert_eq!(client.get_msg_code().unwrap(), 530);
+
+        client.send_msg_add_crlf("PASS anonymous").unwrap();
+        assert_eq!(client.get_msg_code().unwrap(), 503);
     }
 }

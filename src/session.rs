@@ -1,4 +1,4 @@
-use crate::command::Command;
+use crate::{command::Command, response};
 use anyhow::{anyhow, Ok, Result};
 use log::debug;
 use paste::paste;
@@ -8,10 +8,22 @@ use std::{
     net::TcpStream,
 };
 
+fn fake_user_valid(username: &str, password: &str) -> bool {
+    username == "anonymous" && password == "anonymous"
+}
+
+#[derive(PartialEq, Debug)]
+enum LoginStatus {
+    Unloggedin,
+    Username(String),
+    Loggedin(String),
+}
+
 /// Session with a client
 pub struct Session {
     cmd_reader: BufReader<TcpStream>,
     cmd_writer: BufWriter<TcpStream>,
+    login_status: LoginStatus,
 }
 
 impl Session {
@@ -21,6 +33,7 @@ impl Session {
         Ok(Session {
             cmd_reader,
             cmd_writer,
+            login_status: LoginStatus::Unloggedin,
         })
     }
 
@@ -59,8 +72,62 @@ impl Session {
         Ok(())
     }
 
-    pub fn exec_quit(&mut self, _args: Vec<String>) -> Result<()> {
+    fn exec_quit(&mut self, _args: Vec<String>) -> Result<()> {
         Err(anyhow!(""))
+    }
+
+    fn exec_user(&mut self, args: Vec<String>) -> Result<()> {
+        // TODO: dont repeat it
+        if args.is_empty() {
+            self.send_msg_check_crlf(response::SyntaxErr500::default())?;
+            return Ok(());
+        }
+
+        let username = &args[0];
+        if username.is_empty() {
+            self.send_msg_check_crlf(response::SyntaxErr500::default())?;
+            return Ok(());
+        }
+
+        match self.login_status {
+            LoginStatus::Unloggedin | LoginStatus::Username(_) => {
+                self.login_status = LoginStatus::Username(username.into());
+                self.send_msg_check_crlf(response::NeedPassword331::default())?;
+            }
+            LoginStatus::Loggedin(_) => self.send_msg_check_crlf(response::NotLoggedin530::new("Can't change to another user."))?,
+        }
+        Ok(())
+    }
+
+    fn exec_pass(&mut self, args: Vec<String>) -> Result<()> {
+        // TODO: dont repeat it
+        if args.is_empty() {
+            self.send_msg_check_crlf(response::SyntaxErr500::default())?;
+            return Ok(());
+        }
+
+        let passwd = &args[0];
+        if passwd.is_empty() {
+            self.send_msg_check_crlf(response::SyntaxErr500::default())?;
+            return Ok(());
+        }
+
+        match &self.login_status {
+            LoginStatus::Unloggedin => {
+                self.send_msg_check_crlf(response::WrongCmdSequence503::new("Login with USER first."))?
+            }
+            LoginStatus::Username(username) => {
+                if fake_user_valid(username, passwd) {
+                    self.login_status =LoginStatus::Loggedin(username.into());
+                    self.send_msg_check_crlf(response::LoginSuccess230::default())?;
+                } else {
+                    self.login_status = LoginStatus::Unloggedin;
+                    self.send_msg_check_crlf(response::NotLoggedin530::new("Login incorrect."))?;
+                }
+            }
+            LoginStatus::Loggedin(_) => self.send_msg_check_crlf(response::LoginSuccess230::new("Already logged in."))?,
+        }
+        Ok(())
     }
 }
 
@@ -79,7 +146,7 @@ macro_rules! register_command_handlers {
     }
 }
 
-register_command_handlers!(Quit);
+register_command_handlers!(Quit, User, Pass);
 
 #[cfg(test)]
 mod session_test {
@@ -172,5 +239,121 @@ mod session_test {
         // Quit will return an Err, thus the infinite loop in serve will break and Session will be dropped
         //      thus the stream in Session will be automaticly closed
         assert!(session.exec_cmd(Command::Quit(vec![])).is_err());
+    }
+
+    mod test_loggin {
+        use super::*;
+
+        static USERNAME: &str = "anonymous";
+        static PASSWORD: &str = "anonymous";
+
+        #[test]
+        fn test_unlogged() {
+            let (_, session) = setup::setup_client_and_session();
+
+            assert_eq!(session.login_status, LoginStatus::Unloggedin);
+        }
+
+        #[test]
+        fn test_wrong_arguments() {
+            let (_, mut session) = setup::setup_client_and_session();
+
+            session.exec_cmd(Command::User(vec![])).unwrap();
+            assert_eq!(session.login_status, LoginStatus::Unloggedin);
+            session.exec_cmd(Command::Pass(vec![])).unwrap();
+            assert_eq!(session.login_status, LoginStatus::Unloggedin);
+        }
+
+        mod test_user {
+            use super::*;
+            #[test]
+            fn test_exec_user_unlogged() {
+                let (_, mut session) = setup::setup_client_and_session();
+
+                session
+                    .exec_cmd(Command::User(vec![USERNAME.into()]))
+                    .unwrap();
+                assert_eq!(session.login_status, LoginStatus::Username(USERNAME.into()));
+            }
+
+            #[test]
+            fn test_exec_user_username() {
+                let (_, mut session) = setup::setup_client_and_session();
+
+                session.login_status = LoginStatus::Username("oldusername".into());
+                session
+                    .exec_cmd(Command::User(vec!["newusername".into()]))
+                    .unwrap();
+
+                // can change username
+                assert_eq!(
+                    session.login_status,
+                    LoginStatus::Username("newusername".into())
+                );
+            }
+
+            #[test]
+            fn test_exec_user_loggedin() {
+                let (_, mut session) = setup::setup_client_and_session();
+
+                session.login_status = LoginStatus::Loggedin("oldusername".into());
+                session
+                    .exec_cmd(Command::User(vec!["newusername".into()]))
+                    .unwrap();
+
+                // cannot change user
+                assert_eq!(
+                    session.login_status,
+                    LoginStatus::Loggedin("oldusername".into())
+                );
+            }
+        }
+
+        mod test_pass {
+            use super::*;
+
+            #[test]
+            fn test_exec_pass_unlogged() {
+                let (_, mut session) = setup::setup_client_and_session();
+
+                session
+                    .exec_cmd(Command::Pass(vec![PASSWORD.into()]))
+                    .unwrap();
+                assert_eq!(session.login_status, LoginStatus::Unloggedin);
+            }
+
+            #[test]
+            fn test_exec_pass_username() {
+                let (_, mut session) = setup::setup_client_and_session();
+
+                session.login_status = LoginStatus::Username(USERNAME.into());
+                session
+                    .exec_cmd(Command::Pass(vec!["wrongpassword".into()]))
+                    .unwrap();
+                // status back to Unloggedin
+                assert_eq!(session.login_status, LoginStatus::Unloggedin);
+
+                session.login_status = LoginStatus::Username(USERNAME.into());
+                // right password
+                session
+                    .exec_cmd(Command::Pass(vec![PASSWORD.into()]))
+                    .unwrap();
+                // login success
+                assert_eq!(session.login_status, LoginStatus::Loggedin(USERNAME.into()))
+            }
+
+            #[test]
+            fn test_exec_pass_loggedin() {
+                let (_, mut session) = setup::setup_client_and_session();
+
+                session.login_status = LoginStatus::Loggedin(USERNAME.into());
+                session
+                    .exec_cmd(Command::Pass(vec![PASSWORD.into()]))
+                    .unwrap();
+
+                // cannot change user
+                assert_eq!(session.login_status, LoginStatus::Loggedin(USERNAME.into()));
+            }
+        }
     }
 }

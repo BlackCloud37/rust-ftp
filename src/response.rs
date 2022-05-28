@@ -75,8 +75,14 @@ macro_rules! response {
     };
 }
 
-response!(Greeting220, 220, "Welcome to the rust FTP Server");
-response!(SyntaxErr500, 500, "Command not executed: syntax error");
+response!(Greeting220, 220, "Welcome to the rust FTP Server.");
+response!(LoginSuccess230, 230, "Login successful.");
+
+response!(NeedPassword331, 331, "Please specify the password.");
+
+response!(SyntaxErr500, 500, "Command not executed: syntax error.");
+response!(WrongCmdSequence503, 503, "Wrong command sequence.");
+response!(NotLoggedin530, 530, "Not logged in.");
 response!(UnknownRespWithoutDefaultMessage999, 999);
 
 #[cfg(test)]
@@ -89,10 +95,10 @@ mod response_test {
 
     #[test]
     fn test_resp_default_message() {
-        assert_response_equal_str(Greeting220::default(), "220 Welcome to the rust FTP Server");
+        assert_response_equal_str(Greeting220::default(), "220 Welcome to the rust FTP Server.");
         assert_response_equal_str(
             SyntaxErr500::default(),
-            "500 Command not executed: syntax error",
+            "500 Command not executed: syntax error.",
         );
     }
 
