@@ -1,61 +1,80 @@
-use std::str::FromStr;
+#![allow(unused_variables)]
+#![allow(non_snake_case)]
 
+use std::str::FromStr;
 use strum_macros::EnumString;
 
-// `#[non_exhaustive]` allows adding variants without breaking users who match the enum
-#[non_exhaustive]
-#[derive(EnumString, PartialEq, Debug)]
-#[strum(ascii_case_insensitive)]
-pub enum CommandT {
-    Quit,
+macro_rules! commands {
+    ($($cmd: ident), *) => {
+
+        #[derive(EnumString, Debug)]
+        #[strum(ascii_case_insensitive)]
+        pub enum Command {
+            $(
+                $cmd(Vec<String>),
+            )*
+        }
+
+        impl Command {
+            /// Parse string to command,
+            /// All arguments will be collected as Strings without checking their validity since
+            ///     exec should do it
+            /// return `None` if command type is unexist
+            pub fn parse<S: AsRef<str>>(s: S) -> Option<Self> {
+                let tokens = s.as_ref().split_ascii_whitespace().collect::<Vec<_>>();
+                if tokens.is_empty() {
+                    return None;
+                }
+
+                let parse_result = Command::from_str(tokens[0]);
+                match parse_result {
+                    Ok(command) => {
+                        let args = tokens[1..].iter().map(|s| s.to_string()).collect();
+                        match command {
+                            $($cmd => Some(Self::$cmd(args)),)*
+                        }
+                    },
+                    _ => None
+                }
+            }
+
+            #[allow(dead_code)]
+            pub fn get_args(&self) -> &Vec<String> {
+                match self {
+                    $(Self::$cmd(v) => &v,)*
+                }
+            }
+        }
+    };
 }
 
-#[derive(PartialEq, Debug)]
-pub struct Command {
-    pub cmd_type: CommandT,
-    pub args: Vec<String>,
-}
-
-impl Command {
-    pub fn parse(s: &str) -> Option<Self> {
-        let tokens = s.split_ascii_whitespace().collect::<Vec<_>>();
-        if tokens.is_empty() {
-            return None;
-        }
-        match CommandT::from_str(tokens[0]) {
-            Ok(cmd) => Some(Self {
-                cmd_type: cmd,
-                args: tokens[1..].iter().map(|t| t.to_string()).collect(),
-            }),
-            Err(_) => None,
-        }
-    }
-}
+commands!(Quit);
 
 #[cfg(test)]
 mod command_test {
     use super::*;
 
     #[test]
-    fn test_parse_ok() {
-        let quit = Command::parse("QUIT").unwrap();
-        assert_eq!(quit.cmd_type, CommandT::Quit);
-        assert_eq!(quit.args.len(), 0);
+    fn test_parse_valid() {
+        let quit = Command::parse("QUIT\r\n").unwrap();
+        assert!(matches!(quit, Command::Quit(_)));
+        assert!(quit.get_args().is_empty());
 
-        let quit_case_insensitive = Command::parse("qUiT").unwrap();
-        assert_eq!(quit_case_insensitive.cmd_type, CommandT::Quit);
-        assert_eq!(quit_case_insensitive.args.len(), 0);
+        let case_insensitive_quit = Command::parse("qUiT\r\n").unwrap();
+        assert!(matches!(case_insensitive_quit, Command::Quit(_)));
+        assert!(case_insensitive_quit.get_args().is_empty());
 
-        let with_arg = Command::parse("QUIT arg1 arg2 arg3").unwrap();
-        assert_eq!(with_arg.cmd_type, CommandT::Quit);
-        assert_eq!(with_arg.args[0], "arg1");
-        assert_eq!(with_arg.args[1], "arg2");
-        assert_eq!(with_arg.args[2], "arg3");
+        let quit_with_arguments = Command::parse("quit a b c 1 2 3\r\n").unwrap();
+        assert!(matches!(quit_with_arguments, Command::Quit(_)));
+        assert_eq!(quit_with_arguments.get_args().len(), 6);
+        for (i, ch) in ["a", "b", "c", "1", "2", "3"].iter().enumerate() {
+            assert_eq!(quit_with_arguments.get_args()[i], *ch);
+        }
     }
 
     #[test]
-    fn test_parse_unexist() {
-        assert_eq!(Command::parse(""), None);
-        assert_eq!(Command::parse("NONE arg1 arg2 arg3"), None);
+    fn test_parse_invalid() {
+        assert!(Command::parse("\r\n").is_none());
+        assert!(Command::parse("NONE arg1 arg2 arg3\r\n").is_none());
     }
 }

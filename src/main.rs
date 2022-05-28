@@ -1,7 +1,8 @@
 mod command;
 mod response;
 mod session;
-use std::{net::{TcpListener, TcpStream, ToSocketAddrs},
+use std::{
+    net::{TcpListener, TcpStream, ToSocketAddrs},
     thread,
 };
 
@@ -42,7 +43,7 @@ fn serve_one_client(stream: TcpStream) {
         if let Ok(mut session) = Session::new(stream) {
             let mut run = || -> Result<()> {
                 info!("Session with {client_addr:} starts");
-                session.send_msg(response::Greeting220::default())?;
+                session.send_msg_check_crlf(response::Greeting220::default())?;
 
                 loop {
                     let cmd = session.get_cmd()?;
@@ -51,7 +52,7 @@ fn serve_one_client(stream: TcpStream) {
                         session.exec_cmd(cmd)?;
                     } else {
                         // parse failed
-                        session.send_msg(response::SyntaxErr500::default())?;
+                        session.send_msg_check_crlf(response::SyntaxErr500::default())?;
                     }
                 }
             };
@@ -65,7 +66,7 @@ fn serve_one_client(stream: TcpStream) {
 }
 
 #[cfg(test)]
-mod integration_test {
+pub mod integration_test {
     use std::{
         io::{BufRead, BufReader, BufWriter, Write},
         net::TcpStream,
@@ -80,13 +81,13 @@ mod integration_test {
     use crate::{response::*, serve};
 
     pub struct TestClient {
-        cmd_reader: BufReader<TcpStream>,
-        cmd_writer: BufWriter<TcpStream>,
+        pub(crate) cmd_reader: BufReader<TcpStream>,
+        pub(crate) cmd_writer: BufWriter<TcpStream>,
     }
 
     impl TestClient {
-        /// receive one line message from client
-        fn get_msg(&mut self) -> Result<String> {
+        /// receive one line message from server and trim it
+        pub fn get_msg_trimed(&mut self) -> Result<String> {
             let mut line = String::new();
             let bytes = self.cmd_reader.read_line(&mut line).unwrap();
             if bytes == 0 {
@@ -95,8 +96,8 @@ mod integration_test {
             Ok(line.trim().to_string())
         }
 
-        /// send one line message to client(with appended \r\n)
-        fn send_msg(&mut self, msg: &str) -> Result<()> {
+        /// send one line message to server(with appended \r\n)
+        pub fn send_msg_add_crlf(&mut self, msg: &str) -> Result<()> {
             self.cmd_writer
                 .write_all(format!("{msg:}\r\n").as_bytes())?;
             self.cmd_writer.flush()?;
@@ -108,7 +109,7 @@ mod integration_test {
         use super::*;
 
         static INIT: Once = Once::new();
-        pub fn setup_once() {
+        fn setup_once() {
             INIT.call_once(|| {
                 init_logger();
                 setup_server();
@@ -130,6 +131,7 @@ mod integration_test {
 
         /// returns reader/writer of control conn
         pub fn setup_client() -> TestClient {
+            setup_once();
             let client = TcpStream::connect("127.0.0.1:8080").unwrap();
             let cmd_reader = BufReader::new(client.try_clone().unwrap());
             let cmd_writer = BufWriter::new(client.try_clone().unwrap());
@@ -141,8 +143,8 @@ mod integration_test {
         }
     }
 
-    mod utils {
-        pub fn assert_string_trim_eq<S: AsRef<str>>(lhs: S, rhs: S) {
+    pub mod utils {
+        pub fn assert_string_trim_eq<LS: AsRef<str>, RS: AsRef<str>>(lhs: LS, rhs: RS) {
             assert_eq!(lhs.as_ref().trim(), rhs.as_ref().trim());
         }
     }
@@ -152,22 +154,20 @@ mod integration_test {
 
     #[test]
     fn test_hello() {
-        setup_once();
         let mut client = setup_client();
 
         assert_string_trim_eq(
-            client.get_msg().unwrap(),
+            client.get_msg_trimed().unwrap(),
             Greeting220::default().to_string(),
         );
     }
 
     #[test]
     fn test_quit() {
-        setup_once();
         let mut client = setup_client();
 
-        client.get_msg().unwrap(); // ignore hello
-        client.send_msg("QUIT").unwrap(); // quit
-        assert!(client.get_msg().is_err()); // conn should close
+        client.get_msg_trimed().unwrap(); // ignore hello
+        client.send_msg_add_crlf("QUIT").unwrap(); // quit
+        assert!(client.get_msg_trimed().is_err()); // conn should close
     }
 }
