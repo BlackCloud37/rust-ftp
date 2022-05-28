@@ -72,69 +72,65 @@ impl Session {
         Ok(())
     }
 
-    fn exec_quit(&mut self, _args: Vec<String>) -> Result<()> {
-        Err(anyhow!(""))
+    fn exec_quit(&mut self, _args: Vec<String>) -> Result<String> {
+        self.send_msg_check_crlf(response::Goodbye221::default().to_string())?;
+        Err(anyhow!("quit"))
     }
 
-    fn exec_user(&mut self, args: Vec<String>) -> Result<()> {
+    fn exec_user(&mut self, args: Vec<String>) -> Result<String> {
         // TODO: dont repeat it
         if args.is_empty() {
-            self.send_msg_check_crlf(response::SyntaxErr500::default())?;
-            return Ok(());
+            return Ok(response::SyntaxErr500::default().to_string());
         }
 
         let username = &args[0];
         if username.is_empty() {
-            self.send_msg_check_crlf(response::SyntaxErr500::default())?;
-            return Ok(());
+            return Ok(response::SyntaxErr500::default().to_string());
         }
 
-        match self.login_status {
+        Ok(match self.login_status {
             LoginStatus::Unloggedin | LoginStatus::Username(_) => {
                 self.login_status = LoginStatus::Username(username.into());
-                self.send_msg_check_crlf(response::NeedPassword331::default())?;
+                response::NeedPassword331::default().to_string()
             }
-            LoginStatus::Loggedin(_) => self.send_msg_check_crlf(response::NotLoggedin530::new("Can't change to another user."))?,
-        }
-        Ok(())
+            LoginStatus::Loggedin(_) => response::NotLoggedin530::new("Can't change to another user.").to_string(),
+        })
     }
 
-    fn exec_pass(&mut self, args: Vec<String>) -> Result<()> {
+    fn exec_pass(&mut self, args: Vec<String>) -> Result<String> {
         // TODO: dont repeat it
         if args.is_empty() {
-            self.send_msg_check_crlf(response::SyntaxErr500::default())?;
-            return Ok(());
+            return Ok(response::SyntaxErr500::default().to_string());
         }
 
         let passwd = &args[0];
         if passwd.is_empty() {
-            self.send_msg_check_crlf(response::SyntaxErr500::default())?;
-            return Ok(());
+            return Ok(response::SyntaxErr500::default().to_string());
         }
 
-        match &self.login_status {
+        Ok(match &self.login_status {
             LoginStatus::Unloggedin => {
-                self.send_msg_check_crlf(response::WrongCmdSequence503::new("Login with USER first."))?
+                response::WrongCmdSequence503::new("Login with USER first.").to_string()
             }
             LoginStatus::Username(username) => {
                 if fake_user_valid(username, passwd) {
                     self.login_status =LoginStatus::Loggedin(username.into());
-                    self.send_msg_check_crlf(response::LoginSuccess230::default())?;
+                    response::LoginSuccess230::default().to_string()
                 } else {
                     self.login_status = LoginStatus::Unloggedin;
-                    self.send_msg_check_crlf(response::NotLoggedin530::new("Login incorrect."))?;
+                    response::NotLoggedin530::new("Login incorrect.").to_string()
                 }
             }
-            LoginStatus::Loggedin(_) => self.send_msg_check_crlf(response::LoginSuccess230::new("Already logged in."))?,
-        }
-        Ok(())
+            LoginStatus::Loggedin(_) => response::LoginSuccess230::new("Already logged in.").to_string(),
+        })
     }
 }
 
 macro_rules! register_command_handlers {
     ($($cmd: ident), *) => {
         impl crate::Session {
-            pub fn exec_cmd(&mut self, cmd: Command) -> anyhow::Result<()> {
+            // if Err is returned, the conn will be close
+            pub fn exec_cmd(&mut self, cmd: Command) -> anyhow::Result<String> {
                 match cmd {
                     $(
                         Command::$cmd(arg) => paste!{ self.[<exec_ $cmd:lower>](arg) },

@@ -49,7 +49,8 @@ fn serve_one_client(stream: TcpStream) {
                     let cmd = session.get_cmd()?;
                     debug!("Parse result: {cmd:?}");
                     if let Some(cmd) = cmd {
-                        session.exec_cmd(cmd)?;
+                        let resp = session.exec_cmd(cmd)?;
+                        session.send_msg_check_crlf(resp)?;
                     } else {
                         // parse failed
                         session.send_msg_check_crlf(response::SyntaxErr500::default())?;
@@ -173,6 +174,7 @@ pub mod integration_test {
 
         client.get_msg_trimed().unwrap(); // ignore hello
         client.send_msg_add_crlf("QUIT").unwrap(); // quit
+        assert_eq!(client.get_msg_code().unwrap(), 221);
         assert!(client.get_msg_trimed().is_err()); // conn should close
     }
 

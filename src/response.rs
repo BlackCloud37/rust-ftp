@@ -76,6 +76,7 @@ macro_rules! response {
 }
 
 response!(Greeting220, 220, "Welcome to the rust FTP Server.");
+response!(Goodbye221, 221, "Goodbye.");
 response!(LoginSuccess230, 230, "Login successful.");
 
 response!(NeedPassword331, 331, "Please specify the password.");

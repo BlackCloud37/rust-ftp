@@ -29,7 +29,6 @@ macro_rules! commands {
                 let parse_result = Command::from_str(tokens[0]);
                 match parse_result {
                     Ok(command) => {
-                        println!("{command:?}");
                         let args = tokens[1..].iter().map(|s| s.to_string()).collect();
                         match command {
                             $(Command::$cmd(_) => Some(Self::$cmd(args)),)*
