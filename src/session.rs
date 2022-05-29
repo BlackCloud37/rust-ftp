@@ -89,11 +89,11 @@ impl Session {
         }
 
         Ok(match self.login_status {
+            LoginStatus::Loggedin(_) => response::NotLoggedin530::new("Can't change to another user.").to_string(),
             LoginStatus::Unloggedin | LoginStatus::Username(_) => {
                 self.login_status = LoginStatus::Username(username.into());
                 response::NeedPassword331::default().to_string()
             }
-            LoginStatus::Loggedin(_) => response::NotLoggedin530::new("Can't change to another user.").to_string(),
         })
     }
 
@@ -109,9 +109,8 @@ impl Session {
         }
 
         Ok(match &self.login_status {
-            LoginStatus::Unloggedin => {
-                response::WrongCmdSequence503::new("Login with USER first.").to_string()
-            }
+            LoginStatus::Unloggedin => response::WrongCmdSequence503::new("Login with USER first.").to_string(),
+            LoginStatus::Loggedin(_) => response::LoginSuccess230::new("Already logged in.").to_string(),
             LoginStatus::Username(username) => {
                 if fake_user_valid(username, passwd) {
                     self.login_status =LoginStatus::Loggedin(username.into());
@@ -121,7 +120,6 @@ impl Session {
                     response::NotLoggedin530::new("Login incorrect.").to_string()
                 }
             }
-            LoginStatus::Loggedin(_) => response::LoginSuccess230::new("Already logged in.").to_string(),
         })
     }
 }
@@ -129,10 +127,13 @@ impl Session {
 macro_rules! register_command_handlers {
     ($($cmd: ident), *) => {
         impl crate::Session {
-            // if Err is returned, the conn will be close
+            /// Returns Ok(Message) then Message will be send to client
+            /// Returns Err(e) then conn will be closed
             pub fn exec_cmd(&mut self, cmd: Command) -> anyhow::Result<String> {
                 match cmd {
                     $(
+                        // `paste` will concat function names like exec_quit, exec_user and so on
+                        //      so that I don't need to write all these match arms by myself
                         Command::$cmd(arg) => paste!{ self.[<exec_ $cmd:lower>](arg) },
                     )*
                 }

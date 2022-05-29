@@ -31,7 +31,7 @@ macro_rules! commands {
                     Ok(command) => {
                         let args = tokens[1..].iter().map(|s| s.to_string()).collect();
                         match command {
-                            $(Command::$cmd(_) => Some(Self::$cmd(args)),)*
+                            $(Self::$cmd(_) => Some(Self::$cmd(args)),)*
                         }
                     },
                     _ => None
