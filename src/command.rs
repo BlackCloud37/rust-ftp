@@ -37,7 +37,12 @@ macro_rules! commands {
                                 Self::$cmd(_) => {
                                     // TODO: deal with escape char or space in arguments
                                     if $argc == 0 {
-                                        return Ok(Self::$cmd(vec![]));
+                                        let arg = tokens.into_iter().skip(1).map(|s| s.to_string()).collect::<Vec<_>>().join(" ");
+                                        return if arg.is_empty() {
+                                            Ok(Self::$cmd(vec![]))
+                                        } else {
+                                            Ok(Self::$cmd(vec![arg]))
+                                        }
                                     }
                                     let mut tokens = tokens.into_iter().skip(1).map(|s| s.to_string());
                                     let mut args = Vec::with_capacity($argc);
@@ -79,7 +84,7 @@ macro_rules! commands {
     };
 }
 
-commands!(Quit(0), User(1), Pass(1), FakeCmdWithTwoArg(2));
+commands!(Quit(0), User(1), Pass(1), FakeCmdWithTwoArg(2), Pasv(0), Port(1), List(0));
 
 #[cfg(test)]
 mod command_test {
@@ -106,10 +111,6 @@ mod command_test {
 
     #[test]
     fn test_parse_too_many_arguments() {
-        let quit_with_arguments = Command::parse("quit a b c 1 2 3\r\n").unwrap();
-        assert!(matches!(quit_with_arguments, Command::Quit(_)));
-        assert_eq!(quit_with_arguments.get_args().len(), 0);
-
         let user_with_arguments = Command::parse("user username1 username2\r\n").unwrap();
         assert!(matches!(user_with_arguments, Command::User(_)));
         // arguments will be concat if they are too many

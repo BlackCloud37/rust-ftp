@@ -75,16 +75,23 @@ macro_rules! response {
     };
 }
 
+response!(DataTransferStarts150, 150, "150 Here comes the data.");
 response!(Greeting220, 220, "Welcome to the rust FTP Server.");
 response!(Goodbye221, 221, "Goodbye.");
+response!(DataTransferFinished226, 226, "Data transfer finished.");
+response!(PasvMode227, 227);
 response!(LoginSuccess230, 230, "Login successful.");
 
 response!(NeedPassword331, 331, "Please specify the password.");
 
+response!(ServiceNotAvalible421, 421, "Service not available, closing control connection.");
+response!(NoModeSpecified425, 425, "Use PASV first.");
+
 response!(SyntaxErr500, 500, "Command not executed: syntax error.");
 response!(InvalidParameter501, 501, "Invalid parameters.");
+response!(NotImplementedCommand502, 502, "Command not implemented.");
 response!(WrongCmdSequence503, 503, "Wrong command sequence.");
-response!(NotLoggedin530, 530, "Not logged in.");
+response!(NotLoggedin530, 530, "Please login with USER and PASS.");
 response!(UnknownRespWithoutDefaultMessage999, 999);
 
 #[cfg(test)]
