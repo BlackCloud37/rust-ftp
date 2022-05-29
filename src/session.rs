@@ -40,7 +40,7 @@ impl Session {
     /// receive one line message and parse it to command
     /// returns err when failed to get message, thus the conn should be closed
     /// returns ok but the inner value may be none if parse failed
-    pub fn get_cmd(&mut self) -> Result<Option<Command>> {
+    pub fn get_cmd(&mut self) -> Result<Result<Command>> {
         let line = self.get_msg_not_trimmed()?;
         let line = line.trim();
         debug!("Recv message: {line:}");
@@ -78,16 +78,7 @@ impl Session {
     }
 
     fn exec_user(&mut self, args: Vec<String>) -> Result<String> {
-        // TODO: dont repeat it
-        if args.is_empty() {
-            return Ok(response::SyntaxErr500::default().to_string());
-        }
-
         let username = &args[0];
-        if username.is_empty() {
-            return Ok(response::SyntaxErr500::default().to_string());
-        }
-
         Ok(match self.login_status {
             LoginStatus::Loggedin(_) => response::NotLoggedin530::new("Can't change to another user.").to_string(),
             LoginStatus::Unloggedin | LoginStatus::Username(_) => {
@@ -98,16 +89,7 @@ impl Session {
     }
 
     fn exec_pass(&mut self, args: Vec<String>) -> Result<String> {
-        // TODO: dont repeat it
-        if args.is_empty() {
-            return Ok(response::SyntaxErr500::default().to_string());
-        }
-
         let passwd = &args[0];
-        if passwd.is_empty() {
-            return Ok(response::SyntaxErr500::default().to_string());
-        }
-
         Ok(match &self.login_status {
             LoginStatus::Unloggedin => response::WrongCmdSequence503::new("Login with USER first.").to_string(),
             LoginStatus::Loggedin(_) => response::LoginSuccess230::new("Already logged in.").to_string(),
@@ -121,6 +103,10 @@ impl Session {
                 }
             }
         })
+    }
+
+    fn exec_fakecmdwithtwoarg(&mut self, _args: Vec<String>) -> Result<String> {
+        unreachable!()
     }
 }
 
@@ -143,7 +129,7 @@ macro_rules! register_command_handlers {
     }
 }
 
-register_command_handlers!(Quit, User, Pass);
+register_command_handlers!(Quit, User, Pass, FakeCmdWithTwoArg);
 
 #[cfg(test)]
 mod session_test {
@@ -225,7 +211,7 @@ mod session_test {
 
         client.send_msg_add_crlf("QUIT arg").unwrap();
         let cmd = session.get_cmd().unwrap();
-        assert!(cmd.is_some());
+        assert!(cmd.is_ok());
         assert!(matches!(cmd.unwrap(), Command::Quit(_)));
     }
 
@@ -248,16 +234,6 @@ mod session_test {
         fn test_unlogged() {
             let (_, session) = setup::setup_client_and_session();
 
-            assert_eq!(session.login_status, LoginStatus::Unloggedin);
-        }
-
-        #[test]
-        fn test_wrong_arguments() {
-            let (_, mut session) = setup::setup_client_and_session();
-
-            session.exec_cmd(Command::User(vec![])).unwrap();
-            assert_eq!(session.login_status, LoginStatus::Unloggedin);
-            session.exec_cmd(Command::Pass(vec![])).unwrap();
             assert_eq!(session.login_status, LoginStatus::Unloggedin);
         }
 

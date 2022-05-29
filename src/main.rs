@@ -48,12 +48,14 @@ fn serve_one_client(stream: TcpStream) {
                 loop {
                     let cmd = session.get_cmd()?;
                     debug!("Parse result: {cmd:?}");
-                    if let Some(cmd) = cmd {
-                        let resp = session.exec_cmd(cmd)?;
-                        session.send_msg_check_crlf(resp)?;
-                    } else {
-                        // parse failed
-                        session.send_msg_check_crlf(response::SyntaxErr500::default())?;
+                    match cmd {
+                        Ok(cmd) => {
+                            let resp = session.exec_cmd(cmd)?;
+                            session.send_msg_check_crlf(resp)?;
+                        },
+                        Err(e) => {
+                            session.send_msg_check_crlf(e.to_string())?;
+                        }
                     }
                 }
             };

@@ -82,6 +82,7 @@ response!(LoginSuccess230, 230, "Login successful.");
 response!(NeedPassword331, 331, "Please specify the password.");
 
 response!(SyntaxErr500, 500, "Command not executed: syntax error.");
+response!(InvalidParameter501, 501, "Invalid parameters.");
 response!(WrongCmdSequence503, 503, "Wrong command sequence.");
 response!(NotLoggedin530, 530, "Not logged in.");
 response!(UnknownRespWithoutDefaultMessage999, 999);
